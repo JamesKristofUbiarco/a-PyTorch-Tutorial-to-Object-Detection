@@ -1,0 +1,16 @@
+/.venv/
+__pycache__/
+.DS_Store
+/data/
+/saved_models/
+*.pth
+*.pth.tar
+*.pt
+*.ckpt
+/TRAIN_images.json
+/TRAIN_objects.json
+/TEST_images.json
+/TEST_objects.json
+/label_map.json
+/images.jpg
+/images (1).jpg

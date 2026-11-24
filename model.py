@@ -99,7 +99,8 @@ class VGGBase(nn.Module):
         param_names = list(state_dict.keys())
 
         # Pretrained VGG base
-        pretrained_state_dict = torchvision.models.vgg16(pretrained=True).state_dict()
+        pretrained_state_dict = torchvision.models.vgg16(
+            weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1).state_dict()
         pretrained_param_names = list(pretrained_state_dict.keys())
 
         # Transfer conv. parameters from pretrained model to current model
@@ -547,7 +548,7 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
 
         self.smooth_l1 = nn.L1Loss()  # *smooth* L1 loss in the paper; see Remarks section in the tutorial
-        self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
@@ -560,6 +561,7 @@ class MultiBoxLoss(nn.Module):
         :return: multibox loss, a scalar
         """
         batch_size = predicted_locs.size(0)
+        device = predicted_locs.device
         n_priors = self.priors_cxcy.size(0)
         n_classes = predicted_scores.size(2)
 

@@ -49,16 +49,25 @@ def parse_annotation(annotation_path):
     return {'boxes': boxes, 'labels': labels, 'difficulties': difficulties}
 
 
-def create_data_lists(voc07_path, voc12_path, output_folder):
+def create_data_lists(voc07_path, voc12_path, output_folder, voc07_test_path=None):
     """
     Create lists of images, the bounding boxes and labels of the objects in these images, and save these to file.
 
-    :param voc07_path: path to the 'VOC2007' folder
+    :param voc07_path: path to the training 'VOC2007' folder
     :param voc12_path: path to the 'VOC2012' folder
     :param output_folder: folder where the JSONs must be saved
+    :param voc07_test_path: path to the test 'VOC2007' folder; defaults to voc07_path
     """
     voc07_path = os.path.abspath(voc07_path)
     voc12_path = os.path.abspath(voc12_path)
+    voc07_test_path = os.path.abspath(voc07_test_path) if voc07_test_path is not None else voc07_path
+
+    # Check all splits before writing any output files.
+    for path, split in [(voc07_path, 'trainval'), (voc12_path, 'trainval'), (voc07_test_path, 'test')]:
+        split_path = os.path.join(path, 'ImageSets', 'Main', split + '.txt')
+        if not os.path.isfile(split_path):
+            raise FileNotFoundError('Missing VOC split file: %s. Check the training and test dataset paths.' % split_path)
+    os.makedirs(output_folder, exist_ok=True)
 
     train_images = list()
     train_objects = list()
@@ -76,7 +85,7 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
             objects = parse_annotation(os.path.join(path, 'Annotations', id + '.xml'))
             if len(objects['boxes']) == 0:
                 continue
-            n_objects += len(objects)
+            n_objects += len(objects['boxes'])
             train_objects.append(objects)
             train_images.append(os.path.join(path, 'JPEGImages', id + '.jpg'))
 
@@ -99,17 +108,17 @@ def create_data_lists(voc07_path, voc12_path, output_folder):
     n_objects = 0
 
     # Find IDs of images in the test data
-    with open(os.path.join(voc07_path, 'ImageSets/Main/test.txt')) as f:
+    with open(os.path.join(voc07_test_path, 'ImageSets/Main/test.txt')) as f:
         ids = f.read().splitlines()
 
     for id in ids:
         # Parse annotation's XML file
-        objects = parse_annotation(os.path.join(voc07_path, 'Annotations', id + '.xml'))
-        if len(objects) == 0:
+        objects = parse_annotation(os.path.join(voc07_test_path, 'Annotations', id + '.xml'))
+        if len(objects['boxes']) == 0:
             continue
         test_objects.append(objects)
-        n_objects += len(objects)
-        test_images.append(os.path.join(voc07_path, 'JPEGImages', id + '.jpg'))
+        n_objects += len(objects['boxes'])
+        test_images.append(os.path.join(voc07_test_path, 'JPEGImages', id + '.jpg'))
 
     assert len(test_objects) == len(test_images)
 
@@ -567,7 +576,7 @@ def photometric_distort(image):
 
     for d in distortions:
         if random.random() < 0.5:
-            if d.__name__ is 'adjust_hue':
+            if d.__name__ == 'adjust_hue':
                 # Caffe repo uses a 'hue_delta' of 18 - we divide by 255 because PyTorch needs a normalized value
                 adjust_factor = random.uniform(-18 / 255., 18 / 255.)
             else:
@@ -666,17 +675,20 @@ def accuracy(scores, targets, k):
     return correct_total.item() * (100.0 / batch_size)
 
 
-def save_checkpoint(epoch, model, optimizer):
+def save_checkpoint(epoch, model, optimizer, steps=None):
     """
     Save model checkpoint.
 
     :param epoch: epoch number
     :param model: model
     :param optimizer: optimizer
+    :param steps: total completed optimizer steps, if known
     """
     state = {'epoch': epoch,
              'model': model,
              'optimizer': optimizer}
+    if steps is not None:
+        state['steps'] = steps
     filename = 'checkpoint_ssd300.pth.tar'
     torch.save(state, filename)
 

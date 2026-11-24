@@ -1,4 +1,5 @@
 import time
+from math import ceil
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
@@ -13,12 +14,14 @@ keep_difficult = True  # use objects considered difficult to detect?
 # Model parameters
 # Not too many here since the SSD300 has a very specific structure
 n_classes = len(label_map)  # number of different types of objects
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else
+                      "mps" if torch.backends.mps.is_available() else "cpu")
 
 # Learning parameters
-checkpoint = None  # path to model checkpoint, None if none
-batch_size = 8  # batch size
-iterations = 120000  # number of iterations to train
+#checkpoint = None  # path to model checkpoint, None if none
+checkpoint = "./checkpoint_ssd300.pth.tar"
+batch_size = 32  # batch size
+iterations = 27000  # total optimizer steps to train
 workers = 4  # number of workers for loading data in the DataLoader
 print_freq = 200  # print training status every __ batches
 lr = 1e-3  # learning rate
@@ -36,6 +39,7 @@ def main():
     Training.
     """
     global start_epoch, label_map, epoch, checkpoint, decay_lr_at
+    print(f"device: {device}")
 
     # Initialize model or load checkpoint
     if checkpoint is None:
@@ -54,7 +58,8 @@ def main():
                                     lr=lr, momentum=momentum, weight_decay=weight_decay)
 
     else:
-        checkpoint = torch.load(checkpoint)
+        # This project's locally generated checkpoints contain model and optimizer objects.
+        checkpoint = torch.load(checkpoint, map_location=device, weights_only=False)
         start_epoch = checkpoint['epoch'] + 1
         print('\nLoaded checkpoint from epoch %d.\n' % start_epoch)
         model = checkpoint['model']
@@ -62,6 +67,7 @@ def main():
 
     # Move to default device
     model = model.to(device)
+    model.priors_cxcy = model.priors_cxcy.to(device)
     criterion = MultiBoxLoss(priors_cxcy=model.priors_cxcy).to(device)
 
     # Custom dataloaders
@@ -70,13 +76,17 @@ def main():
                                      keep_difficult=keep_difficult)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                collate_fn=train_dataset.collate_fn, num_workers=workers,
-                                               pin_memory=True)  # note that we're passing the collate function here
+                                               pin_memory=device.type == 'cuda')  # note that we're passing the collate function here
 
-    # Calculate total number of epochs to train and the epochs to decay learning rate at (i.e. convert iterations to epochs)
-    # To convert iterations to epochs, divide iterations by the number of iterations per epoch
-    # The paper trains for 120,000 iterations with a batch size of 32, decays after 80,000 and 100,000 iterations
-    epochs = iterations // (len(train_dataset) // 32)
-    decay_lr_at = [it // (len(train_dataset) // 32) for it in decay_lr_at]
+    if not train_loader:
+        raise ValueError('The training dataset is empty. Run create_data_lists.py first.')
+    completed_steps = checkpoint.get('steps', start_epoch * len(train_loader)) if checkpoint else 0
+    epochs = start_epoch + ceil(max(0, iterations - completed_steps) / len(train_loader))
+    decay_lr_at = [it // len(train_loader) for it in decay_lr_at]
+    if start_epoch >= epochs:
+        print('The checkpoint already reached the configured training budget. Increase iterations to continue.')
+        return
+    print(f'Training for up to {iterations} total steps ({epochs} epochs).')
 
     # Epochs
     for epoch in range(start_epoch, epochs):
@@ -90,13 +100,15 @@ def main():
               model=model,
               criterion=criterion,
               optimizer=optimizer,
-              epoch=epoch)
+              epoch=epoch,
+              max_batches=min(len(train_loader), iterations - completed_steps))
+        completed_steps += min(len(train_loader), iterations - completed_steps)
 
         # Save checkpoint
-        save_checkpoint(epoch, model, optimizer)
+        save_checkpoint(epoch, model, optimizer, steps=completed_steps)
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, criterion, optimizer, epoch, max_batches=None):
     """
     One epoch's training.
 
@@ -105,6 +117,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
     :param criterion: MultiBox loss
     :param optimizer: optimizer
     :param epoch: epoch number
+    :param max_batches: optional limit on optimizer steps for this epoch
     """
     model.train()  # training mode enables dropout
 
@@ -153,6 +166,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(epoch, i, len(train_loader),
                                                                   batch_time=batch_time,
                                                                   data_time=data_time, loss=losses))
+        if max_batches is not None and i + 1 >= max_batches:
+            break
     del predicted_locs, predicted_scores, images, boxes, labels  # free some memory since their histories may be stored
 
 

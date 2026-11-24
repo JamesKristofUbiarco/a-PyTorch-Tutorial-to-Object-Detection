@@ -1,0 +1,26 @@
+[project]
+name = "a-pytorch-tutorial-to-object-detection"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "IvTole", email = "toledano.ivan16@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.14.1",
+    "torchvision>=0.29.2",
+]
+
+[project.scripts]
+a-pytorch-tutorial-to-object-detection = "a_pytorch_tutorial_to_object_detection:main"
+
+[project.optional-dependencies]
+notebook = [
+    "marimo>=0.19,<1",
+    "wigglystuff>=0.4.4,<0.5",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
