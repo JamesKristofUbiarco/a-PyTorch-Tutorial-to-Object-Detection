@@ -1003,3 +1003,26 @@ Redundant detections aren't really a problem since we're NMS-ing the hell out of
 __Sorry, but I gotta ask... _[what's in the boooox?!](https://cnet4.cbsistatic.com/img/cLD5YVGT9pFqx61TuMtcSBtDPyY=/570x0/2017/01/14/6d8103f7-a52d-46de-98d0-56d0e9d79804/se7en.png)___
 
 Ha.
+
+## Streamlit Web Interface (Live Camera)
+
+A web interface to detect objects with SSD300 from your computer's camera, a snapshot, or an uploaded image. It reuses the `Detector` class from `notebooks/inference.py`.
+
+**Requirements**
+- A trained checkpoint in the project root named `checkpoint_ssd300.pth.tar`. It is not tracked by git (it is in `.gitignore`), so ask whoever trained it to share it. It must be a single file, not an extracted folder.
+- Dependencies: `pip install torch torchvision` and `pip install -r requirements-app.txt`.
+
+**Run** (from the repo root)
+
+```bash
+streamlit run app_streamlit.py
+```
+
+The app opens at `http://localhost:8501`. Available tabs:
+- **Live camera:** press START and allow camera access.
+- **Camera snapshot:** take a picture and analyze it.
+- **Upload image:** analyze a JPG or PNG file.
+
+The sidebar lets you adjust the checkpoint path, device (`auto`, `cpu`, `cuda`, `mps`), minimum confidence, maximum overlap (NMS), and maximum number of detections. The theme is defined in `.streamlit/config.toml`.
+
+**Note:** the model is trained on the 20 PASCAL VOC classes (person, dog, chair, car, etc.) and cannot detect other objects.
